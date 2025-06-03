@@ -1,0 +1,262 @@
+package com.example.biblioteka;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+// Główna klasa uruchamiająca aplikację Spring Boot
+@SpringBootApplication
+public class BibliotekaApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(BibliotekaApplication.class, args);
+    }
+}
+
+// ------------------- MODELE (ENCJE JPA) -------------------
+
+// Reprezentacja encji utworu muzycznego
+@Entity
+public class Utwor {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private String tytul;
+    private String gatunek;
+
+    @ManyToOne // relacja wiele utworów do jednego artysty
+    private Artysta artysta;
+
+    private boolean dostepny = true;
+
+    // gettery i settery
+}
+
+// Reprezentacja artysty
+@Entity
+public class Artysta {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    private String imie;
+    private String nazwisko;
+
+    // gettery i settery
+}
+
+// Reprezentacja użytkownika systemu
+@Entity
+public class Uzytkownik {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    private String imie;
+    private String nazwisko;
+
+    // gettery i settery
+}
+
+// Reprezentacja historii odtworzeń utworu przez użytkownika
+@Entity
+public class Odtworzenie {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne
+    private Utwor utwor;
+
+    @ManyToOne
+    private Uzytkownik uzytkownik;
+
+    private String dataOdtworzenia;
+
+    // gettery i settery
+}
+
+// Reprezentacja playlisty utworzonej przez użytkownika
+@Entity
+public class Playlist {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private String nazwa;
+
+    @ManyToOne // właściciel playlisty
+    private Uzytkownik wlasciciel;
+
+    @ManyToMany // lista utworów w playliście
+    private Set<Utwor> utwory;
+
+    // gettery i settery
+}
+
+// ------------------- KONTROLERY REST -------------------
+
+// Kontroler obsługujący operacje na utworach
+@RestController
+@RequestMapping("/api/utwory")
+public class UtworController {
+
+    @Autowired // INJECTION serwisu do logiki zarządzania utworami
+    private UtworService utworService;
+
+    @GetMapping
+    public List<Utwor> wszystkieUtwory() {
+        return utworService.znajdzWszystkie();
+    }
+
+    @PostMapping
+    public Utwor dodajUtwor(@RequestBody Utwor utwor) {
+        return utworService.zapisz(utwor);
+    }
+
+    @DeleteMapping("/{id}")
+    public void usunUtwor(@PathVariable Long id) {
+        utworService.usun(id);
+    }
+
+    @PutMapping("/{id}")
+    public Utwor edytujUtwor(@PathVariable Long id, @RequestBody Utwor utwor) {
+        return utworService.edytuj(id, utwor);
+    }
+}
+
+// Kontroler do obsługi playlist
+@RestController
+@RequestMapping("/api/playlisty")
+public class PlaylistController {
+
+    @Autowired // INJECTION serwisu do zarządzania playlistami
+    private PlaylistService playlistService;
+
+    @PostMapping
+    public Playlist utworzPlayliste(@RequestBody Playlist playlist) {
+        return playlistService.zapisz(playlist);
+    }
+
+    @GetMapping("/{id}")
+    public Playlist pobierzPlayliste(@PathVariable Long id) {
+        return playlistService.znajdzPoId(id);
+    }
+
+    @PutMapping("/{id}/dodaj-utwor")
+    public Playlist dodajUtwor(@PathVariable Long id, @RequestParam Long utworId) {
+        return playlistService.dodajUtwor(id, utworId);
+    }
+
+    @DeleteMapping("/{id}/usun-utwor")
+    public Playlist usunUtwor(@PathVariable Long id, @RequestParam Long utworId) {
+        return playlistService.usunUtwor(id, utworId);
+    }
+}
+
+// ------------------- SERWISY -------------------
+
+// Serwis obsługujący logikę biznesową dla utworów
+@Service
+public class UtworService {
+
+    @Autowired // INJECTION repozytorium do komunikacji z bazą danych
+    private UtworRepository utworRepo;
+
+    public List<Utwor> znajdzWszystkie() {
+        return utworRepo.findAll();
+    }
+
+    public Utwor zapisz(Utwor utwor) {
+        return utworRepo.save(utwor);
+    }
+
+    public void usun(Long id) {
+        utworRepo.deleteById(id);
+    }
+
+    public Utwor edytuj(Long id, Utwor nowyUtwor) {
+        Utwor u = utworRepo.findById(id).orElseThrow();
+        u.setTytul(nowyUtwor.getTytul());
+        u.setGatunek(nowyUtwor.getGatunek());
+        u.setArtysta(nowyUtwor.getArtysta());
+        return utworRepo.save(u);
+    }
+}
+
+// Serwis obsługujący logikę biznesową dla playlist
+@Service
+public class PlaylistService {
+
+    @Autowired // INJECTION repozytoriów
+    private PlaylistRepository playlistRepo;
+
+    @Autowired
+    private UtworRepository utworRepo;
+
+    public Playlist zapisz(Playlist playlist) {
+        return playlistRepo.save(playlist);
+    }
+
+    public Playlist znajdzPoId(Long id) {
+        return playlistRepo.findById(id).orElseThrow();
+    }
+
+    public Playlist dodajUtwor(Long playlistId, Long utworId) {
+        Playlist playlist = playlistRepo.findById(playlistId).orElseThrow();
+        Utwor utwor = utworRepo.findById(utworId).orElseThrow();
+        playlist.getUtwory().add(utwor);
+        return playlistRepo.save(playlist);
+    }
+
+    public Playlist usunUtwor(Long playlistId, Long utworId) {
+        Playlist playlist = playlistRepo.findById(playlistId).orElseThrow();
+        Utwor utwor = utworRepo.findById(utworId).orElseThrow();
+        playlist.getUtwory().remove(utwor);
+        return playlistRepo.save(playlist);
+    }
+}
+
+// ------------------- REPOZYTORIA -------------------
+
+// Repozytorium do obsługi encji Utwor (Spring Data JPA)
+public interface UtworRepository extends JpaRepository<Utwor, Long> {
+    List<Utwor> findByTytulContainingIgnoreCase(String tytul);
+    List<Utwor> findByArtysta_NazwiskoContainingIgnoreCase(String nazwisko);
+    List<Utwor> findByGatunek(String gatunek);
+}
+
+// Repozytorium do obsługi encji Playlist
+public interface PlaylistRepository extends JpaRepository<Playlist, Long> {
+}
+
+// ------------------- KONFIGURACJA BEZPIECZEŃSTWA -------------------
+
+// Konfiguracja zabezpieczeń HTTP dla API (autoryzacja podstawowa)
+@Configuration
+@EnableWebSecurity
+public class SecurityConfig {
+    @Bean
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        http.csrf().disable()
+            .authorizeHttpRequests()
+            .requestMatchers("/api/**").authenticated()
+            .anyRequest().permitAll()
+            .and()
+            .httpBasic();
+        return http.build();
+    }
+}
+
+// ------------------- STATYSTYKI -------------------
+
+// Kontroler do generowania statystyk
+@RestController
+@RequestMapping("/api/statystyki")
+public class StatystykiController {
+
+    @Autowired // INJECTION repozytorium utworów
+    private UtworRepository utworRepo;
+
+    @GetMapping("/dostepne")
+    public long liczbaDostepnych() {
+        return utworRepo.findAll().stream().filter(Utwor::isDostepny).count();
+    }
+}
